@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Template to create source and destination S3 buckets and an AWS Glue job for JSON transformation'
+
+Parameters:
+  SourceBucketName:
+    Type: String
+    Description: Name of the source S3 bucket
+  DestinationBucketName:
+    Type: String
+    Description: Name of the destination S3 bucket
+  GlueJobName:
+    Type: String
+    Default: json-transform-job
+    Description: Name of the Glue job
+
+Resources:
+  SourceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref SourceBucketName
+
+  DestinationBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref DestinationBucketName
+
+  GlueServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${GlueJobName}-Role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: GlueS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - !Sub arn:aws:s3:::${SourceBucketName}/*
+                  - !Sub arn:aws:s3:::${SourceBucketName}
+                  - !Sub arn:aws:s3:::${DestinationBucketName}/*
+                  - !Sub arn:aws:s3:::${DestinationBucketName}
+              - Effect: Allow
+                Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+                Resource:
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws-glue/*
+                - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws-glue/*:*
+  GlueJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Ref GlueJobName
+      Role: !GetAtt GlueServiceRole.Arn
+      Command:
+        Name: glueray
+        ScriptLocation: ./script.py
+        Runtime: Ray2.4
+      GlueVersion: "4.0"  # Glue Ray は Glue 4.0 以上
+      WorkerType: Z.2X
+      NumberOfWorkers: 2
+      DefaultArguments:
+        --job-language: python
+        --enable-glue-datacatalog: "true"
+        --INPUT_BUCKET: !Ref SourceBucket
+        --OUTPUT_BUCKET: !Ref DestinationBucket
+        --TempDir: !Sub 's3://${DestinationBucketName}/temp'
+        --enable-continuous-cloudwatch-log: true
+
+Outputs:
+  SourceBucketArn:
+    Description: ARN of the source bucket
+    Value: !GetAtt SourceBucket.Arn
+  DestinationBucketArn:
+    Description: ARN of the destination bucket
+    Value: !GetAtt DestinationBucket.Arn
+  GlueJobNameOut:
+    Description: Glue job name
+    Value: !Ref GlueJobName
