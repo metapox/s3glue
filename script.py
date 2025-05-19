@@ -18,8 +18,8 @@ def process_file(bucket, key, out_bucket):
         obj = s3.get_object(Bucket=bucket, Key=key)
         data = json.loads(obj["Body"].read())
 
-        if 'base_words' in data and isinstance(data['base_words'], list):
-            data['base_words'].append(''.join(random.choices(string.ascii_lowercase, k=2)))
+        if 'test' in data and isinstance(data['test'], list):
+            data['test'].append(''.join(random.choices(string.ascii_lowercase, k=2)))
 
         s3.put_object(
             Bucket=out_bucket,
